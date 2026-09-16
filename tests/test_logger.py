@@ -26,6 +26,15 @@ def test_json_formatter_includes_extra():
     assert payload["form_id"] == "f1"
 
 
+def test_json_formatter_survives_non_serializable_extra():
+    class Weird:
+        def __str__(self):
+            return "weird-value"
+
+    payload = json.loads(JsonFormatter().format(make_record(extra={"obj": Weird()})))
+    assert payload["obj"] == "weird-value"
+
+
 def test_json_formatter_includes_exception():
     try:
         raise ValueError("boom")
