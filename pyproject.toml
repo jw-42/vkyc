@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vkyc"
+version = "0.1.0"
+description = "Платформенные примитивы для бэкенда VK Mini Apps на Yandex Cloud Functions + YDB"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{name = "Vladislav Laukman", email = "vladislav@firewave.earth"}]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/jw-42/vkyc"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vkyc"]
+
+[dependency-groups]
+dev = ["pytest==8.3.3", "ruff==0.7.4"]
+
+[tool.ruff]
+target-version = "py312"
