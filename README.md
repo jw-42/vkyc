@@ -1,5 +1,5 @@
 # vkyc
 
-Платформенные примитивы для бэкенда VK Mini Apps на связке Yandex Cloud Functions + YDB: верификация VK launch-params и JWT, форма HTTP-ответа и логирование под Cloud Functions, CRUD-примитивы поверх YDB Document API, подписки VK Pay и тарифы.
+Платформенные примитивы для бэкенда VK Mini Apps в связке с Yandex Cloud: верификация и JWT, стандартизация ответов, логирование в Cloud Logging, CRUD-примитивы поверх YDB Document API, подписки и тарифы.
 
 **Статус: в разработке.** Публичного релиза ещё нет, API нестабилен, устанавливать пока не из чего.
