@@ -1,0 +1,82 @@
+import json
+from decimal import Decimal
+
+from vkyc.errors import BadRequestError, InternalError
+from vkyc.http import error_response, get_client_ip, handle_errors, response
+
+
+def test_response_shape_and_decimal_encoding():
+    result = response(200, {"count": Decimal("3"), "ratio": Decimal("1.5")})
+    assert result["statusCode"] == 200
+    assert result["headers"]["Content-Type"] == "application/json"
+    body = json.loads(result["body"])
+    assert body == {"count": 3, "ratio": 1.5}
+
+
+def test_response_defaults_to_empty_body():
+    assert json.loads(response(204)["body"]) == {}
+
+
+def test_error_response_shape():
+    result = error_response(BadRequestError("плохой запрос"))
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body == {"error": {"code": "bad_request", "message": "плохой запрос"}}
+
+
+def test_get_client_ip_prefers_source_ip():
+    event = {
+        "requestContext": {"http": {"sourceIp": "1.2.3.4"}},
+        "headers": {"x-forwarded-for": "9.9.9.9"},
+    }
+    assert get_client_ip(event) == "1.2.3.4"
+
+
+def test_get_client_ip_falls_back_to_forwarded_for():
+    event = {"headers": {"x-forwarded-for": "9.9.9.9, 8.8.8.8"}}
+    assert get_client_ip(event) == "9.9.9.9"
+
+
+def test_get_client_ip_unknown():
+    assert get_client_ip({}) == "unknown"
+
+
+def test_handle_errors_passthrough():
+    @handle_errors
+    def handler(event, context):
+        return response(200, {"ok": True})
+
+    result = handler({}, None)
+    assert result["statusCode"] == 200
+
+
+def test_handle_errors_converts_api_error():
+    @handle_errors
+    def handler(event, context):
+        raise BadRequestError("плохо")
+
+    result = handler({}, None)
+    assert result["statusCode"] == 400
+
+
+def test_handle_errors_converts_unhandled_exception():
+    @handle_errors
+    def handler(event, context):
+        raise ValueError("boom")
+
+    result = handler({}, None)
+    assert result["statusCode"] == 500
+    assert json.loads(result["body"])["error"]["code"] == InternalError.error_code
+
+
+def test_handle_errors_normalizes_yandex_event_shape():
+    seen = {}
+
+    @handle_errors
+    def handler(event, context):
+        seen["pathParameters"] = event["pathParameters"]
+        seen["method"] = event["requestContext"]["http"]["method"]
+        return response(200)
+
+    handler({"pathParams": {"id": "1"}, "httpMethod": "POST"}, None)
+    assert seen == {"pathParameters": {"id": "1"}, "method": "POST"}
