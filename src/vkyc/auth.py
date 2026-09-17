@@ -38,18 +38,37 @@ class AuthContext(TypedDict):
 
 class VkLaunchParams(TypedDict, total=False):
     """
-    Известные поля VK Mini Apps launch params. VK может прислать больше
-    ключей, чем перечислено здесь (список полей не фиксирован протоколом) —
-    `verify_vk_launch_params` пропускает их все, эти поля документируют то,
-    что реально используется кодом уровня приложения.
+    Параметры запуска VK Mini Apps (https://dev.vk.com/ru/mini-apps/launch-params).
+    Все значения — строки: `verify_vk_launch_params` приводит их через `str(v)`
+    ещё до проверки подписи (VK передаёт их как query-параметры URL, а подпись
+    считается от строкового представления), поэтому даже документированные у VK
+    как `integer` поля (`vk_user_id`, `vk_ts` и т.п.) здесь — `str`, а не `int`;
+    приводить к числу — забота вызывающего кода (см. `int(flat.get("vk_ts"))`
+    внутри этой же функции). Все поля опциональны (`total=False`) — какие из
+    них реально придут, зависит от контекста запуска (сообщество/личный,
+    игра/мини-приложение, VK/VK Мессенджер), см. описание каждого поля в
+    документации по ссылке выше.
     """
-    vk_user_id: str
-    vk_app_id: str
-    vk_group_id: str
-    vk_viewer_group_role: str
-    vk_platform: str
-    vk_ts: str
-    vk_language: str
+    vk_access_token_settings: str  # список разрешённых прав доступа через запятую
+    vk_app_id: str  # ID приложения
+    vk_are_notifications_enabled: str  # "0"/"1" — разрешена ли отправка уведомлений
+    vk_chat_id: str  # ID чата, если запущено из чата
+    vk_group_id: str  # ID сообщества, если запущено из сообщества (не в играх)
+    vk_has_profile_button: str  # "1", если пользователь закрепил кнопку в профиле (не в играх)
+    vk_is_app_user: str  # "0"/"1" — установлено ли приложение
+    vk_is_favorite: str  # "0"/"1" — добавлено ли приложение в избранное
+    vk_is_play_machine: str  # "1", если игра запущена через Play Machine (только игры)
+    vk_is_recommended: str  # "0"/"1" — рекомендовал ли vk_user_id это приложение друзьям (не в играх)
+    vk_is_widescreen: str  # "1" — широкоформатный режим Web-игры (только игры)
+    vk_language: str  # язык интерфейса: ru/uk/ua/en/be/kz/pt/es
+    vk_platform: str  # платформа запуска (desktop_web, mobile_android, ...)
+    vk_profile_id: str  # ID пользователя, по кнопке в профиле которого запущено (не в играх)
+    vk_ref: str  # источник запуска приложения
+    vk_request_key: str  # ключ запроса/приглашения (VKWebAppShowRequestBox/ShowInviteBox, только игры)
+    vk_testing_group_id: str  # ID тестовой группы пользователя, если состоит в ней
+    vk_ts: str  # unix-время генерации подписи sign
+    vk_user_id: str  # ID пользователя, запустившего приложение
+    vk_viewer_group_role: str  # роль в сообществе: admin/editor/moder/member/none (не в играх)
 
 
 log = get_logger(__name__)
