@@ -1,12 +1,3 @@
-"""
-Единый формат ответа для HTTP-эндпоинтов за Yandex API Gateway (HTTP API,
-payload format 2.0).
-
-Цель: handler конкретной функции не формирует JSON и статус-коды руками,
-а пользуется response()/error_response() — это гарантирует одинаковую
-структуру ответов и заголовков по всему API.
-"""
-
 import json
 from decimal import Decimal
 from typing import Any
@@ -43,11 +34,7 @@ def response(status_code: int, body: dict[str, Any] | list[Any] | None = None) -
 
 
 def get_client_ip(event: dict) -> str:
-    """
-    IP клиента запроса. Приоритет — sourceIp от API Gateway: заголовок
-    X-Forwarded-For клиент может подделать, поэтому он лишь fallback, когда
-    шлюз sourceIp не проставил.
-    """
+    """Возвращает IP клиента запроса."""
     ctx = event.get("requestContext", {})
     source_ip = ctx.get("http", {}).get("sourceIp")
     if source_ip:
@@ -80,25 +67,24 @@ def handle_errors(handler):
             ...
             raise NotFoundError("форма не найдена")
     """
-
     def wrapper(event, context):
-        # Yandex API Gateway uses 'pathParams'; normalize to 'pathParameters' (AWS convention)
         if event.get("pathParams") and not event.get("pathParameters"):
             event["pathParameters"] = event["pathParams"]
-        # Yandex API Gateway puts HTTP method in 'httpMethod'; normalize to AWS format
+        
         if event.get("httpMethod") and not event.get("requestContext", {}).get("http", {}).get("method"):
             event.setdefault("requestContext", {}).setdefault("http", {})["method"] = event["httpMethod"]
+        
         try:
             return handler(event, context)
         except ApiError as exc:
             log.warning(
-                "обработанная ошибка API: %s",
+                "Обработанная ошибка API: %s",
                 exc.message,
                 extra={"error_code": exc.error_code, "status_code": exc.status_code},
             )
             return error_response(exc)
         except Exception:
-            log.exception("необработанная ошибка в handler'е")
-            return error_response(InternalError("внутренняя ошибка сервера"))
+            log.exception("Необработанная ошибка в handler'е")
+            return error_response(InternalError("Внутренняя ошибка сервера."))
 
     return wrapper

@@ -1,20 +1,3 @@
-"""
-Тонкий best-effort клиент Yandex Monitoring write API v2 для кастомных метрик
-(service=custom).
-
-emit() рассчитан на вызов из фоновых обработчиков, НЕ с горячего пути
-HTTP-запроса, и никогда не бросает: при любой ошибке пишет log.info(...) и
-выходит — потеря одной точки метрики не должна ронять бизнес-логику.
-
-IAM-токен для Monitoring write API берётся из метадата-сервиса функции
-(http://169.254.169.254/..., заголовок Metadata-Flavor: Google) — сервисный
-аккаунт функции должен иметь роль monitoring.editor.
-
-Обязательные переменные окружения: FOLDER_ID. Опциональные:
-MONITORING_ENDPOINT (дефолт — публичный endpoint Monitoring), STAGE (лейбл
-`stage`, добавляется к каждой точке автоматически, дефолт — пустая строка).
-"""
-
 import json
 import os
 import urllib.request
@@ -31,11 +14,6 @@ DEFAULT_MONITORING_ENDPOINT = "https://monitoring.api.cloud.yandex.net"
 
 
 def emit(name: str, labels: dict[str, str], value: int = 1) -> None:
-    """
-    Пишет одну точку кастомной метрики Monitoring (service=custom). Best-effort:
-    НИКОГДА не бросает — при ошибке log.info(...) и выход. Лейбл `stage`
-    добавляется автоматически.
-    """
     try:
         write_point(name, labels, value)
     except Exception as exc:  # noqa: BLE001 — метрика best-effort, потеря точки некритична

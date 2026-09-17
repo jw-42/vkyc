@@ -39,45 +39,31 @@ def jwt_secret() -> str:
 
 
 def vk_secret_key() -> str:
-    """Защищённый ключ VK-приложения — подписывает launch params (HMAC-SHA256,
-    см. verify_vk_launch_params)."""
+    """Обёртка над `get_secret()` для секретного ключа приложения ВКонтакте."""
     return get_secret(os.environ["VK_SECRET_KEY_ENV"])
 
 
 # ─── VK Mini Apps ─────────────────────────────────────────────────────────────
 
 def verify_vk_launch_params(params: dict) -> dict:
-    """
-    Верифицирует подпись VK Mini Apps launch params.
-    Принимает dict параметров (от VKWebAppGetLaunchParams через VK Bridge).
-    Возвращает dict всех vk_* параметров без поля sign.
-    Поднимает UnauthorizedError при невалидной подписи.
-    """
+    """Проверяет подпись параметров запуска мини-приложения ВКонтакте."""
     secret_id = os.environ["VK_SECRET_KEY_ENV"]
     app_secret = get_secret(secret_id)
 
     log.debug("VK verify: received keys=%r", sorted(params.keys()))
 
-    # Проверка на случай, если секрет хранится в secret manager как JSON-объект,
-    # а не как plaintext — в этом случае HMAC будет вычислен от неверного ключа.
     if app_secret.lstrip().startswith("{"):
-        log.warning(
-            "VK секрет похож на JSON-объект (secret_id=%r). "
-            "Убедитесь, что в хранилище секретов лежит сырая строка (plaintext), "
-            "а не обёртка вида {\"key\": \"value\"}.",
-            secret_id,
-        )
+        log.warning("Значение должно быть plaintext, а не JSON-объектом", secret_id)
 
-    # Все значения приводим к str, как они приходят из URL-параметров VK
     flat = {k: str(v) for k, v in params.items()}
 
     sign = flat.pop("sign", None)
     if not sign:
-        raise UnauthorizedError("отсутствует подпись VK")
+        raise UnauthorizedError("Подпись параметров запуска мини-приложения отсутствует.")
 
     vk_ts = int(flat.get("vk_ts", 0))
     if abs(time.time() - vk_ts) > VK_LAUNCH_PARAMS_MAX_AGE:
-        raise UnauthorizedError("устаревшие параметры VK")
+        raise UnauthorizedError("Параметры запуска мини-приложения устарели.")
 
     vk_pairs = sorted((k, v) for k, v in flat.items() if k.startswith("vk_"))
     check_string = urlencode(vk_pairs)
@@ -92,7 +78,7 @@ def verify_vk_launch_params(params: dict) -> dict:
 
     if not hmac.compare_digest(expected, sign):
         log.warning(
-            "VK подпись не совпала: "
+            "Подпись параметров запуска мини-приложения не совпала: "
             "vk_keys=%r check_string=%r expected=%r received_sign=%r",
             sorted(k for k, _ in vk_pairs),
             check_string,
@@ -122,40 +108,32 @@ def generate_token(
 
 
 def decode_token(token: str) -> dict:
-    """Декодирует и верифицирует JWT. Используется авторизатором API Gateway."""
+    """Декодирует и верифицирует JWT-токен."""
     try:
         return jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
-        raise UnauthorizedError("токен истёк")
+        raise UnauthorizedError("Срок действия ключа доступа истёк.")
     except jwt.InvalidTokenError:
-        raise UnauthorizedError("недействительный токен")
+        raise UnauthorizedError("Недействительный ключ доступа.")
 
 
 # ─── Декораторы ───────────────────────────────────────────────────────────────
-# Авторизатор API Gateway уже проверил JWT и is_blocked до вызова функции.
-# Декораторы только читают готовый контекст из event["requestContext"]["authorizer"]["context"].
 
 def auth_ctx(event: dict) -> dict:
-    """
-    Извлекает контекст авторизатора из event.
-    Yandex API Gateway кладёт context авторизатора напрямую в
-    requestContext.authorizer (не в requestContext.authorizer.context как AWS).
-    """
+    """Извлекает контекст авторизатора из события."""
     authorizer = event.get("requestContext", {}).get("authorizer", {})
-    # Yandex: context — плоский dict прямо в authorizer
-    # AWS:    context вложен в authorizer["context"]
     ctx = authorizer.get("context") or authorizer
     log.debug("auth ctx=%r", ctx)
     return ctx
 
 
 def require_auth(handler):
-    """Извлекает current_user из контекста авторизатора и добавляет в event."""
+    """Извлекает текущего пользователя из контекста авторизатора и добавляет в событие."""
     @wraps(handler)
     def wrapper(event, context):
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
-            raise UnauthorizedError("требуется авторизация")
+            raise UnauthorizedError("Необходима авторизация.")
         event["current_user"] = ctx
         return handler(event, context)
 
@@ -163,14 +141,14 @@ def require_auth(handler):
 
 
 def require_admin(handler):
-    """Требует роль admin из контекста авторизатора."""
+    """Требует роль `admin` из контекста авторизатора."""
     @wraps(handler)
     def wrapper(event, context):
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
-            raise UnauthorizedError("требуется авторизация")
+            raise UnauthorizedError("Необходима авторизация.")
         if ctx.get("role") != "admin":
-            raise ForbiddenError("недостаточно прав")
+            raise ForbiddenError("Недостаточно прав для выполнения этого действия.")
         event["current_user"] = ctx
         return handler(event, context)
 
