@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 from vkyc.errors import ApiError, InternalError
-from vkyc.errors_types import ErrorEnvelope
+from vkyc.errors.types import ErrorEnvelope
 from vkyc.logger import get_logger
 from vkyc.types import Context, Event, GatewayResponse, Handler
 

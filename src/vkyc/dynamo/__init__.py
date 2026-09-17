@@ -12,7 +12,7 @@ from boto3.dynamodb.types import TypeSerializer
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from vkyc.dynamo_types import TransactOp
+from vkyc.dynamo.types import TransactOp
 from vkyc.errors import BadRequestError
 from vkyc.logger import get_logger
 

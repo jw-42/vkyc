@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import jwt
 
-from vkyc.auth_types import AuthContext, JwtPayload, SecretCacheEntry, VkLaunchParams
+from vkyc.auth.types import AuthContext, JwtPayload, SecretCacheEntry, VkLaunchParams
 from vkyc.errors import ForbiddenError, UnauthorizedError
 from vkyc.logger import get_logger
 from vkyc.types import Context, Event, GatewayResponse, Handler
