@@ -15,15 +15,15 @@ from vkyc.logger import get_logger
 log = get_logger(__name__)
 
 SECRET_CACHE: dict = {}
-SECRET_CACHE_TTL = 300  # 5 минут
+SECRET_CACHE_TTL = 300
 
 JWT_ALGORITHM = "HS256"
-JWT_DEFAULT_TTL = 86400  # 24 часа
-VK_LAUNCH_PARAMS_MAX_AGE = 3600  # 1 час — защита от replay-атак
+JWT_DEFAULT_TTL = 86400
+VK_LAUNCH_PARAMS_MAX_AGE = 3600
 
 
 def get_secret(secret_id: str) -> str:
-    """Читает секрет из env-переменной, инжектированной из секретного хранилища."""
+    """Читает секрет из Yandex Secret Manager и кеширует результат."""
     cached = SECRET_CACHE.get(secret_id)
     if cached and cached["expires"] > time.time():
         return cached["value"]
@@ -34,13 +34,14 @@ def get_secret(secret_id: str) -> str:
 
 
 def jwt_secret() -> str:
-    return get_secret(os.environ["JWT_SECRET_SECRET_NAME"])
+    """Обёртка над `get_secret()` для JWT-секрета."""
+    return get_secret(os.environ["JWT_SECRET_ENV"])
 
 
 def vk_secret_key() -> str:
     """Защищённый ключ VK-приложения — подписывает launch params (HMAC-SHA256,
     см. verify_vk_launch_params)."""
-    return get_secret(os.environ["VK_SECRET_KEY_SECRET_NAME"])
+    return get_secret(os.environ["VK_SECRET_KEY_ENV"])
 
 
 # ─── VK Mini Apps ─────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ def verify_vk_launch_params(params: dict) -> dict:
     Возвращает dict всех vk_* параметров без поля sign.
     Поднимает UnauthorizedError при невалидной подписи.
     """
-    secret_id = os.environ["VK_SECRET_KEY_SECRET_NAME"]
+    secret_id = os.environ["VK_SECRET_KEY_ENV"]
     app_secret = get_secret(secret_id)
 
     log.debug("VK verify: received keys=%r", sorted(params.keys()))

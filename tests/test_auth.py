@@ -23,9 +23,9 @@ JWT_SECRET = "jwt-test-secret-long-enough-for-hs256-minimum"
 
 @pytest.fixture(autouse=True)
 def secrets_env(monkeypatch):
-    monkeypatch.setenv("VK_SECRET_KEY_SECRET_NAME", "VK_SECRET_KEY_VALUE")
+    monkeypatch.setenv("VK_SECRET_KEY_ENV", "VK_SECRET_KEY_VALUE")
     monkeypatch.setenv("VK_SECRET_KEY_VALUE", VK_SECRET)
-    monkeypatch.setenv("JWT_SECRET_SECRET_NAME", "JWT_SECRET_VALUE")
+    monkeypatch.setenv("JWT_SECRET_ENV", "JWT_SECRET_VALUE")
     monkeypatch.setenv("JWT_SECRET_VALUE", JWT_SECRET)
     # get_secret() caches by secret_id across tests (module-level dict) — сбрасываем.
     from vkyc.auth import SECRET_CACHE
