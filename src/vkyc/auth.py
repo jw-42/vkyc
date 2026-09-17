@@ -4,17 +4,18 @@ import hmac
 import os
 import time
 from functools import wraps
-from typing import Optional
+from typing import Any
 from urllib.parse import urlencode
 
 import jwt
 
 from vkyc.errors import ForbiddenError, UnauthorizedError
 from vkyc.logger import get_logger
+from vkyc.types import Context, Event, Handler
 
 log = get_logger(__name__)
 
-SECRET_CACHE: dict = {}
+SECRET_CACHE: dict[str, dict[str, Any]] = {}
 SECRET_CACHE_TTL = 300
 
 JWT_ALGORITHM = "HS256"
@@ -26,7 +27,7 @@ def get_secret(secret_id: str) -> str:
     """Читает секрет из Yandex Secret Manager и кеширует результат."""
     cached = SECRET_CACHE.get(secret_id)
     if cached and cached["expires"] > time.time():
-        return cached["value"]
+        return str(cached["value"])
 
     value = os.environ[secret_id]
     SECRET_CACHE[secret_id] = {"value": value, "expires": time.time() + SECRET_CACHE_TTL}
@@ -45,7 +46,7 @@ def vk_secret_key() -> str:
 
 # ─── VK Mini Apps ─────────────────────────────────────────────────────────────
 
-def verify_vk_launch_params(params: dict) -> dict:
+def verify_vk_launch_params(params: dict[str, Any]) -> dict[str, str]:
     """Проверяет подпись параметров запуска мини-приложения ВКонтакте."""
     secret_id = os.environ["VK_SECRET_KEY_ENV"]
     app_secret = get_secret(secret_id)
@@ -95,19 +96,19 @@ def verify_vk_launch_params(params: dict) -> dict:
 def generate_token(
     user_id: str,
     role: str,
-    group_id: Optional[str] = None,
-    group_role: Optional[str] = None,
+    group_id: str | None = None,
+    group_role: str | None = None,
 ) -> str:
     ttl = int(os.environ.get("JWT_TTL_SECONDS", JWT_DEFAULT_TTL))
     now = int(time.time())
-    payload = {"sub": user_id, "role": role, "iat": now, "exp": now + ttl}
+    payload: dict[str, Any] = {"sub": user_id, "role": role, "iat": now, "exp": now + ttl}
     if group_id:
         payload["group_id"] = group_id
         payload["group_role"] = group_role or "none"
     return jwt.encode(payload, jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> dict[str, Any]:
     """Декодирует и верифицирует JWT-токен."""
     try:
         return jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGORITHM])
@@ -119,18 +120,18 @@ def decode_token(token: str) -> dict:
 
 # ─── Декораторы ───────────────────────────────────────────────────────────────
 
-def auth_ctx(event: dict) -> dict:
+def auth_ctx(event: Event) -> dict[str, Any]:
     """Извлекает контекст авторизатора из события."""
     authorizer = event.get("requestContext", {}).get("authorizer", {})
     ctx = authorizer.get("context") or authorizer
     log.debug("auth ctx=%r", ctx)
-    return ctx
+    return dict(ctx)
 
 
-def require_auth(handler):
+def require_auth(handler: Handler) -> Handler:
     """Извлекает текущего пользователя из контекста авторизатора и добавляет в событие."""
     @wraps(handler)
-    def wrapper(event, context):
+    def wrapper(event: Event, context: Context) -> dict[str, Any]:
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
             raise UnauthorizedError("Необходима авторизация.")
@@ -140,10 +141,10 @@ def require_auth(handler):
     return wrapper
 
 
-def require_admin(handler):
+def require_admin(handler: Handler) -> Handler:
     """Требует роль `admin` из контекста авторизатора."""
     @wraps(handler)
-    def wrapper(event, context):
+    def wrapper(event: Event, context: Context) -> dict[str, Any]:
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
             raise UnauthorizedError("Необходима авторизация.")

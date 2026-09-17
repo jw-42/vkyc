@@ -22,7 +22,17 @@ Homepage = "https://github.com/jw-42/vkyc"
 packages = ["src/vkyc"]
 
 [dependency-groups]
-dev = ["pytest==8.3.3", "ruff==0.7.4"]
+dev = [
+    "pytest==8.3.3",
+    "ruff==0.7.4",
+    "mypy==1.14.1",
+    "boto3-stubs[dynamodb,sqs]==1.35.93",
+]
 
 [tool.ruff]
 target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true

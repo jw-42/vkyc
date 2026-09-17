@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 import boto3
 
@@ -10,16 +11,16 @@ sqs = boto3.client(
 )
 
 
-def enqueue(queue_url: str, message_type: str, payload: dict) -> None:
+def enqueue(queue_url: str, message_type: str, payload: dict[str, Any]) -> None:
     body = json.dumps({"type": message_type, "payload": payload}, ensure_ascii=False)
     sqs.send_message(QueueUrl=queue_url, MessageBody=body)
 
 
-def send_message(message_type: str, payload: dict) -> None:
+def send_message(message_type: str, payload: dict[str, Any]) -> None:
     """Кладёт сообщение в быструю очередь (где важна минимальная задержка)."""
     enqueue(os.environ["PROCESSING_QUEUE_URL"], message_type, payload)
 
 
-def send_bulk_message(message_type: str, payload: dict) -> None:
+def send_bulk_message(message_type: str, payload: dict[str, Any]) -> None:
     """Кладёт сообщение в медленную очередь (тяжёлые задачи, не важна задержка)."""
     enqueue(os.environ["BULK_QUEUE_URL"], message_type, payload)

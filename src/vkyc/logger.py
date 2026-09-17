@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, MutableMapping
 
 RESERVED = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime", "taskName"}
 
@@ -22,9 +22,9 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-class ContextAdapter(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
-        kwargs["extra"] = {**self.extra, **(kwargs.get("extra") or {})}
+class ContextAdapter(logging.LoggerAdapter[logging.Logger]):
+    def process(self, msg: Any, kwargs: MutableMapping[str, Any]) -> tuple[Any, MutableMapping[str, Any]]:
+        kwargs["extra"] = {**(self.extra or {}), **(kwargs.get("extra") or {})}
         return msg, kwargs
 
 
@@ -41,6 +41,6 @@ def get_logger(name: str) -> logging.Logger:
     return logger
 
 
-def with_request_id(logger: logging.Logger, request_id: str) -> logging.LoggerAdapter:
+def with_request_id(logger: logging.Logger, request_id: str) -> logging.LoggerAdapter[logging.Logger]:
     """Добавляет `request_id` ко всем последующим записям лога в рамках одного вызова handler'а."""
     return ContextAdapter(logger, {"request_id": request_id})

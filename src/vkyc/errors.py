@@ -1,6 +1,3 @@
-from email import message
-
-
 class ApiError(Exception):
     """Базовый класс для всех ожидаемых ошибок API."""
 

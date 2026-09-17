@@ -49,7 +49,7 @@ def get_iam_token() -> str:
     req = urllib.request.Request(METADATA_TOKEN_URL)
     req.add_header("Metadata-Flavor", "Google")
     with urllib.request.urlopen(req, timeout=5) as resp:
-        return json.loads(resp.read())["access_token"]
+        return str(json.loads(resp.read())["access_token"])
 
 
 def now_iso() -> str:

@@ -4,6 +4,7 @@ from typing import Any
 
 from vkyc.errors import ApiError, InternalError
 from vkyc.logger import get_logger
+from vkyc.types import Context, Event, Handler
 
 log = get_logger(__name__)
 
@@ -13,7 +14,7 @@ DEFAULT_HEADERS = {
 
 
 class JSONEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, Decimal):
             return int(obj) if obj % 1 == 0 else float(obj)
         return super().default(obj)
@@ -33,16 +34,16 @@ def response(status_code: int, body: dict[str, Any] | list[Any] | None = None) -
     }
 
 
-def get_client_ip(event: dict) -> str:
+def get_client_ip(event: Event) -> str:
     """Возвращает IP клиента запроса."""
     ctx = event.get("requestContext", {})
     source_ip = ctx.get("http", {}).get("sourceIp")
     if source_ip:
-        return source_ip
+        return str(source_ip)
     headers = event.get("headers") or {}
     forwarded_for = headers.get("x-forwarded-for", "")
     if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+        return str(forwarded_for).split(",")[0].strip()
     return "unknown"
 
 
@@ -54,7 +55,7 @@ def error_response(error: ApiError) -> dict[str, Any]:
     )
 
 
-def handle_errors(handler):
+def handle_errors(handler: Handler) -> Handler:
     """
     Декоратор для handler'ов HTTP-эндпоинтов (Cloud Functions).
 
@@ -67,13 +68,13 @@ def handle_errors(handler):
             ...
             raise NotFoundError("форма не найдена")
     """
-    def wrapper(event, context):
+    def wrapper(event: Event, context: Context) -> dict[str, Any]:
         if event.get("pathParams") and not event.get("pathParameters"):
             event["pathParameters"] = event["pathParams"]
-        
+
         if event.get("httpMethod") and not event.get("requestContext", {}).get("http", {}).get("method"):
             event.setdefault("requestContext", {}).setdefault("http", {})["method"] = event["httpMethod"]
-        
+
         try:
             return handler(event, context)
         except ApiError as exc:

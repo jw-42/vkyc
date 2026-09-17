@@ -16,4 +16,5 @@ jobs:
           python-version: "3.12"
       - run: uv sync
       - run: uv run ruff check .
+      - run: uv run mypy src
       - run: uv run pytest

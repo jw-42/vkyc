@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import base64
 import json
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import TYPE_CHECKING, Any, cast
 
 import boto3
 from boto3.dynamodb.types import TypeSerializer
@@ -12,6 +14,9 @@ from botocore.exceptions import ClientError
 
 from vkyc.errors import BadRequestError
 from vkyc.logger import get_logger
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.service_resource import Table
 
 log = get_logger(__name__)
 
@@ -35,12 +40,12 @@ transact_client = boto3.client(
 serializer = TypeSerializer()
 
 
-def get_table(env_var: str):
+def get_table(env_var: str) -> Table:
     """Получает таблицу по имени переменной окружения."""
     return dynamodb.Table(os.environ[env_var])
 
 
-def transact_write(operations: list[dict]) -> None:
+def transact_write(operations: list[dict[str, Any]]) -> None:
     """Атомарно выполняет до 25 операций в разных таблицах."""
     serialized = []
     for op in operations:
@@ -57,7 +62,10 @@ def transact_write(operations: list[dict]) -> None:
         serialized.append({kind: spec})
 
     try:
-        transact_client.transact_write_items(TransactItems=serialized)
+        # Операции собраны вручную из произвольных dict-спецификаций (Put/Update/
+        # Delete/ConditionCheck), а не из типизированных TypedDict boto3-stubs —
+        # это и есть смысл этой функции (принимать любую форму операции).
+        transact_client.transact_write_items(TransactItems=cast(Any, serialized))
     except ClientError as e:
         log.error(
             "transact_write_items error=%s, cancellation_reasons=%s",
@@ -70,7 +78,7 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-def convert_decimals(obj):
+def convert_decimals(obj: Any) -> Any:
     if isinstance(obj, Decimal):
         return int(obj) if obj % 1 == 0 else float(obj)
     if isinstance(obj, dict):
@@ -80,37 +88,37 @@ def convert_decimals(obj):
     return obj
 
 
-def from_dynamo(item: dict, internal_fields: frozenset[str] = frozenset()) -> dict:
+def from_dynamo(item: dict[str, Any], internal_fields: frozenset[str] = frozenset()) -> dict[str, Any]:
     """Убирает служебные поля (если объявлены) и конвертирует Decimal в числа Python."""
     clean = {k: v for k, v in item.items() if k not in internal_fields}
-    return convert_decimals(clean)
+    return cast(dict[str, Any], convert_decimals(clean))
 
 
-def encode_cursor(key: dict) -> str:
+def encode_cursor(key: dict[str, Any]) -> str:
     return base64.b64encode(json.dumps(key).encode()).decode()
 
 
-def decode_cursor(cursor: str) -> dict:
+def decode_cursor(cursor: str) -> dict[str, Any]:
     try:
-        return json.loads(base64.b64decode(cursor.encode()).decode())
+        return cast(dict[str, Any], json.loads(base64.b64decode(cursor.encode()).decode()))
     except Exception:
         raise BadRequestError("Некорректный указатель на страницу.")
 
 
 def query_page(
-    table,
-    kwargs: dict,
+    table: Table,
+    kwargs: dict[str, Any],
     limit: int,
-    cursor: Optional[str],
+    cursor: str | None,
     cursor_key_fields: tuple[str, ...],
-) -> tuple[list, Optional[str]]:
+) -> tuple[list[dict[str, Any]], str | None]:
     """Страница запроса с честной пагинацией при использовании фильтра."""
     if cursor:
         kwargs["ExclusiveStartKey"] = decode_cursor(cursor)
-        
+
     kwargs["Limit"] = max(limit * 3, 30) if "FilterExpression" in kwargs else limit
 
-    items: list = []
+    items: list[dict[str, Any]] = []
     while True:
         resp = table.query(**kwargs)
         page = resp.get("Items", [])
