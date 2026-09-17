@@ -1,10 +1,10 @@
 import json
 from decimal import Decimal
-from typing import Any
+from typing import Any, Mapping
 
-from vkyc.errors import ApiError, InternalError
+from vkyc.errors import ApiError, ErrorEnvelope, InternalError
 from vkyc.logger import get_logger
-from vkyc.types import Context, Event, Handler
+from vkyc.types import Context, Event, GatewayResponse, Handler
 
 log = get_logger(__name__)
 
@@ -20,7 +20,7 @@ class JSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def response(status_code: int, body: dict[str, Any] | list[Any] | None = None) -> dict[str, Any]:
+def response(status_code: int, body: Mapping[str, Any] | list[Any] | None = None) -> GatewayResponse:
     """Формирует ответ в формате, который ожидает API Gateway HTTP API."""
     return {
         "statusCode": status_code,
@@ -47,12 +47,10 @@ def get_client_ip(event: Event) -> str:
     return "unknown"
 
 
-def error_response(error: ApiError) -> dict[str, Any]:
+def error_response(error: ApiError) -> GatewayResponse:
     """Превращает доменное исключение в стандартный ответ-ошибку."""
-    return response(
-        error.status_code,
-        {"error": {"code": error.error_code, "message": error.message}},
-    )
+    body: ErrorEnvelope = {"error": {"code": error.error_code, "message": error.message}}
+    return response(error.status_code, body)
 
 
 def handle_errors(handler: Handler) -> Handler:
@@ -68,7 +66,7 @@ def handle_errors(handler: Handler) -> Handler:
             ...
             raise NotFoundError("форма не найдена")
     """
-    def wrapper(event: Event, context: Context) -> dict[str, Any]:
+    def wrapper(event: Event, context: Context) -> GatewayResponse:
         if event.get("pathParams") and not event.get("pathParameters"):
             event["pathParameters"] = event["pathParams"]
 

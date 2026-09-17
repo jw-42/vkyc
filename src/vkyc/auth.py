@@ -4,18 +4,57 @@ import hmac
 import os
 import time
 from functools import wraps
-from typing import Any
+from typing import Any, NotRequired, TypedDict, cast
 from urllib.parse import urlencode
 
 import jwt
 
 from vkyc.errors import ForbiddenError, UnauthorizedError
 from vkyc.logger import get_logger
-from vkyc.types import Context, Event, Handler
+from vkyc.types import Context, Event, GatewayResponse, Handler
+
+
+class SecretCacheEntry(TypedDict):
+    value: str
+    expires: float
+
+
+class JwtPayload(TypedDict):
+    sub: str
+    role: str
+    iat: int
+    exp: int
+    group_id: NotRequired[str]
+    group_role: NotRequired[str]
+
+
+class AuthContext(TypedDict):
+    """Контекст авторизатора: `event["current_user"]` после `require_auth`/`require_admin`."""
+    user_id: str
+    role: str
+    group_id: NotRequired[str]
+    group_role: NotRequired[str]
+
+
+class VkLaunchParams(TypedDict, total=False):
+    """
+    Известные поля VK Mini Apps launch params. VK может прислать больше
+    ключей, чем перечислено здесь (список полей не фиксирован протоколом) —
+    `verify_vk_launch_params` пропускает их все, эти поля документируют то,
+    что реально используется кодом уровня приложения.
+    """
+    vk_user_id: str
+    vk_app_id: str
+    vk_group_id: str
+    vk_viewer_group_role: str
+    vk_platform: str
+    vk_ts: str
+    vk_language: str
+
 
 log = get_logger(__name__)
 
-SECRET_CACHE: dict[str, dict[str, Any]] = {}
+SECRET_CACHE: dict[str, SecretCacheEntry] = {}
 SECRET_CACHE_TTL = 300
 
 JWT_ALGORITHM = "HS256"
@@ -27,7 +66,7 @@ def get_secret(secret_id: str) -> str:
     """Читает секрет из Yandex Secret Manager и кеширует результат."""
     cached = SECRET_CACHE.get(secret_id)
     if cached and cached["expires"] > time.time():
-        return str(cached["value"])
+        return cached["value"]
 
     value = os.environ[secret_id]
     SECRET_CACHE[secret_id] = {"value": value, "expires": time.time() + SECRET_CACHE_TTL}
@@ -46,7 +85,7 @@ def vk_secret_key() -> str:
 
 # ─── VK Mini Apps ─────────────────────────────────────────────────────────────
 
-def verify_vk_launch_params(params: dict[str, Any]) -> dict[str, str]:
+def verify_vk_launch_params(params: dict[str, object]) -> VkLaunchParams:
     """Проверяет подпись параметров запуска мини-приложения ВКонтакте."""
     secret_id = os.environ["VK_SECRET_KEY_ENV"]
     app_secret = get_secret(secret_id)
@@ -88,7 +127,7 @@ def verify_vk_launch_params(params: dict[str, Any]) -> dict[str, str]:
         )
         raise UnauthorizedError("Не удалось проверить подпись параметров запуска мини-приложения.")
 
-    return flat
+    return cast(VkLaunchParams, flat)
 
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
@@ -101,17 +140,17 @@ def generate_token(
 ) -> str:
     ttl = int(os.environ.get("JWT_TTL_SECONDS", JWT_DEFAULT_TTL))
     now = int(time.time())
-    payload: dict[str, Any] = {"sub": user_id, "role": role, "iat": now, "exp": now + ttl}
+    payload: JwtPayload = {"sub": user_id, "role": role, "iat": now, "exp": now + ttl}
     if group_id:
         payload["group_id"] = group_id
         payload["group_role"] = group_role or "none"
-    return jwt.encode(payload, jwt_secret(), algorithm=JWT_ALGORITHM)
+    return jwt.encode(cast(dict[str, Any], payload), jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> dict[str, Any]:
+def decode_token(token: str) -> JwtPayload:
     """Декодирует и верифицирует JWT-токен."""
     try:
-        return jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGORITHM])
+        return cast(JwtPayload, jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGORITHM]))
     except jwt.ExpiredSignatureError:
         raise UnauthorizedError("Срок действия ключа доступа истёк.")
     except jwt.InvalidTokenError:
@@ -120,18 +159,18 @@ def decode_token(token: str) -> dict[str, Any]:
 
 # ─── Декораторы ───────────────────────────────────────────────────────────────
 
-def auth_ctx(event: Event) -> dict[str, Any]:
+def auth_ctx(event: Event) -> AuthContext:
     """Извлекает контекст авторизатора из события."""
     authorizer = event.get("requestContext", {}).get("authorizer", {})
     ctx = authorizer.get("context") or authorizer
     log.debug("auth ctx=%r", ctx)
-    return dict(ctx)
+    return cast(AuthContext, ctx)
 
 
 def require_auth(handler: Handler) -> Handler:
     """Извлекает текущего пользователя из контекста авторизатора и добавляет в событие."""
     @wraps(handler)
-    def wrapper(event: Event, context: Context) -> dict[str, Any]:
+    def wrapper(event: Event, context: Context) -> GatewayResponse:
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
             raise UnauthorizedError("Необходима авторизация.")
@@ -144,7 +183,7 @@ def require_auth(handler: Handler) -> Handler:
 def require_admin(handler: Handler) -> Handler:
     """Требует роль `admin` из контекста авторизатора."""
     @wraps(handler)
-    def wrapper(event: Event, context: Context) -> dict[str, Any]:
+    def wrapper(event: Event, context: Context) -> GatewayResponse:
         ctx = auth_ctx(event)
         if not ctx.get("user_id"):
             raise UnauthorizedError("Необходима авторизация.")

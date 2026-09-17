@@ -1,6 +1,6 @@
 """Общие типы для сигнатур хендлеров Cloud Functions."""
 
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, TypedDict
 
 Event = dict[str, Any]
 
@@ -9,4 +9,11 @@ class Context(Protocol):
     request_id: str
 
 
-Handler = Callable[[Event, Context], dict[str, Any]]
+class GatewayResponse(TypedDict):
+    """Ответ в формате, который ожидает Yandex API Gateway HTTP API."""
+    statusCode: int
+    headers: dict[str, str]
+    body: str
+
+
+Handler = Callable[[Event, Context], GatewayResponse]

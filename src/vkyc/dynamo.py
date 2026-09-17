@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
 
 import boto3
 from boto3.dynamodb.types import TypeSerializer
@@ -17,6 +17,59 @@ from vkyc.logger import get_logger
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb.service_resource import Table
+    from mypy_boto3_dynamodb.type_defs import QueryInputTableQueryTypeDef
+
+
+class PutSpec(TypedDict):
+    TableName: str
+    Item: dict[str, Any]
+    ConditionExpression: NotRequired[str]
+    ExpressionAttributeNames: NotRequired[dict[str, str]]
+    ExpressionAttributeValues: NotRequired[dict[str, Any]]
+
+
+class UpdateSpec(TypedDict):
+    TableName: str
+    Key: dict[str, Any]
+    UpdateExpression: str
+    ConditionExpression: NotRequired[str]
+    ExpressionAttributeNames: NotRequired[dict[str, str]]
+    ExpressionAttributeValues: NotRequired[dict[str, Any]]
+
+
+class DeleteSpec(TypedDict):
+    TableName: str
+    Key: dict[str, Any]
+    ConditionExpression: NotRequired[str]
+    ExpressionAttributeNames: NotRequired[dict[str, str]]
+    ExpressionAttributeValues: NotRequired[dict[str, Any]]
+
+
+class ConditionCheckSpec(TypedDict):
+    TableName: str
+    Key: dict[str, Any]
+    ConditionExpression: str
+    ExpressionAttributeNames: NotRequired[dict[str, str]]
+    ExpressionAttributeValues: NotRequired[dict[str, Any]]
+
+
+class PutOp(TypedDict):
+    Put: PutSpec
+
+
+class UpdateOp(TypedDict):
+    Update: UpdateSpec
+
+
+class DeleteOp(TypedDict):
+    Delete: DeleteSpec
+
+
+class ConditionCheckOp(TypedDict):
+    ConditionCheck: ConditionCheckSpec
+
+
+TransactOp = PutOp | UpdateOp | DeleteOp | ConditionCheckOp
 
 log = get_logger(__name__)
 
@@ -45,11 +98,14 @@ def get_table(env_var: str) -> Table:
     return dynamodb.Table(os.environ[env_var])
 
 
-def transact_write(operations: list[dict[str, Any]]) -> None:
-    """Атомарно выполняет до 25 операций в разных таблицах."""
+def transact_write(operations: list[TransactOp]) -> None:
+    """Атомарно выполняет до 25 операций (Put/Update/Delete/ConditionCheck) в разных таблицах."""
     serialized = []
     for op in operations:
-        kind, spec = next(iter(op.items()))
+        # Каждый TransactOp — TypedDict ровно с одним ключом (Put/Update/Delete/
+        # ConditionCheck) — какой именно, статически неизвестно до чтения самого
+        # значения, поэтому дальше работаем с ним как с обычным dict.
+        kind, spec = next(iter(cast(dict[str, Any], op).items()))
         spec = dict(spec)
         if "Item" in spec:
             spec["Item"] = {k: serializer.serialize(v) for k, v in spec["Item"].items()}
@@ -62,9 +118,6 @@ def transact_write(operations: list[dict[str, Any]]) -> None:
         serialized.append({kind: spec})
 
     try:
-        # Операции собраны вручную из произвольных dict-спецификаций (Put/Update/
-        # Delete/ConditionCheck), а не из типизированных TypedDict boto3-stubs —
-        # это и есть смысл этой функции (принимать любую форму операции).
         transact_client.transact_write_items(TransactItems=cast(Any, serialized))
     except ClientError as e:
         log.error(
@@ -107,7 +160,7 @@ def decode_cursor(cursor: str) -> dict[str, Any]:
 
 def query_page(
     table: Table,
-    kwargs: dict[str, Any],
+    kwargs: QueryInputTableQueryTypeDef,
     limit: int,
     cursor: str | None,
     cursor_key_fields: tuple[str, ...],
