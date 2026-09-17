@@ -5,71 +5,20 @@ import json
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import boto3
 from boto3.dynamodb.types import TypeSerializer
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from vkyc.dynamo_types import TransactOp
 from vkyc.errors import BadRequestError
 from vkyc.logger import get_logger
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb.service_resource import Table
     from mypy_boto3_dynamodb.type_defs import QueryInputTableQueryTypeDef
-
-
-class PutSpec(TypedDict):
-    TableName: str
-    Item: dict[str, Any]
-    ConditionExpression: NotRequired[str]
-    ExpressionAttributeNames: NotRequired[dict[str, str]]
-    ExpressionAttributeValues: NotRequired[dict[str, Any]]
-
-
-class UpdateSpec(TypedDict):
-    TableName: str
-    Key: dict[str, Any]
-    UpdateExpression: str
-    ConditionExpression: NotRequired[str]
-    ExpressionAttributeNames: NotRequired[dict[str, str]]
-    ExpressionAttributeValues: NotRequired[dict[str, Any]]
-
-
-class DeleteSpec(TypedDict):
-    TableName: str
-    Key: dict[str, Any]
-    ConditionExpression: NotRequired[str]
-    ExpressionAttributeNames: NotRequired[dict[str, str]]
-    ExpressionAttributeValues: NotRequired[dict[str, Any]]
-
-
-class ConditionCheckSpec(TypedDict):
-    TableName: str
-    Key: dict[str, Any]
-    ConditionExpression: str
-    ExpressionAttributeNames: NotRequired[dict[str, str]]
-    ExpressionAttributeValues: NotRequired[dict[str, Any]]
-
-
-class PutOp(TypedDict):
-    Put: PutSpec
-
-
-class UpdateOp(TypedDict):
-    Update: UpdateSpec
-
-
-class DeleteOp(TypedDict):
-    Delete: DeleteSpec
-
-
-class ConditionCheckOp(TypedDict):
-    ConditionCheck: ConditionCheckSpec
-
-
-TransactOp = PutOp | UpdateOp | DeleteOp | ConditionCheckOp
 
 log = get_logger(__name__)
 
