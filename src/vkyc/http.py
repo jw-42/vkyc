@@ -35,17 +35,46 @@ def response(status_code: int, body: Mapping[str, Any] | list[Any] | None = None
     }
 
 
+UNKNOWN = "unknown"
+
+
+def find_header(event: Event, name: str) -> str:
+    """Значение заголовка без учёта регистра имени; пустая строка, если его нет."""
+    wanted = name.lower()
+    for key, value in (event.get("headers") or {}).items():
+        if isinstance(key, str) and key.lower() == wanted and value:
+            return str(value)
+    return ""
+
+
 def get_client_ip(event: Event) -> str:
-    """Возвращает IP клиента запроса."""
-    ctx = event.get("requestContext", {})
-    source_ip = ctx.get("http", {}).get("sourceIp")
+    """
+    Возвращает IP клиента запроса.
+
+    Приоритет — sourceIp, проставленный API Gateway: `requestContext.identity`
+    (payload_format_version 0.1, дефолт) или `requestContext.http` (2.0).
+    X-Forwarded-For клиент может дополнить сам, поэтому он используется только
+    как fallback, если шлюз sourceIp не передал. Заголовки в формате 0.1
+    приходят в оригинальном регистре (`X-Forwarded-For`), поэтому ищутся без
+    учёта регистра.
+    """
+    ctx = event.get("requestContext") or {}
+    source_ip = (ctx.get("identity") or {}).get("sourceIp") or (ctx.get("http") or {}).get("sourceIp")
     if source_ip:
         return str(source_ip)
-    headers = event.get("headers") or {}
-    forwarded_for = headers.get("x-forwarded-for", "")
+    forwarded_for = find_header(event, "X-Forwarded-For")
     if forwarded_for:
-        return str(forwarded_for).split(",")[0].strip()
-    return "unknown"
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            return first
+    return UNKNOWN
+
+
+def get_user_agent(event: Event) -> str:
+    """Возвращает User-Agent клиента: `identity.userAgent` шлюза, затем заголовок User-Agent."""
+    ctx = event.get("requestContext") or {}
+    user_agent = (ctx.get("identity") or {}).get("userAgent") or find_header(event, "User-Agent")
+    return str(user_agent) if user_agent else UNKNOWN
 
 
 def error_response(error: ApiError) -> GatewayResponse:

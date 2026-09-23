@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 
 from vkyc.errors import BadRequestError, InternalError
-from vkyc.http import error_response, get_client_ip, handle_errors, response
+from vkyc.http import error_response, find_header, get_client_ip, get_user_agent, handle_errors, response
 
 
 def test_response_shape_and_decimal_encoding():
@@ -39,6 +39,49 @@ def test_get_client_ip_falls_back_to_forwarded_for():
 
 def test_get_client_ip_unknown():
     assert get_client_ip({}) == "unknown"
+
+
+# Реальная форма события API Gateway с payload_format_version 0.1 (дефолт):
+# заголовки в оригинальном регистре, IP/UA — в requestContext.identity.
+EVENT_0_1 = {
+    "requestContext": {
+        "http": {"method": "POST"},
+        "identity": {"sourceIp": "147.234.69.205", "userAgent": "Mozilla/5.0 Firefox/154.0"},
+    },
+    "headers": {"User-Agent": "Mozilla/5.0 Firefox/154.0", "X-Forwarded-For": "147.234.69.205"},
+}
+
+
+def test_get_client_ip_payload_0_1_identity():
+    assert get_client_ip(EVENT_0_1) == "147.234.69.205"
+
+
+def test_get_client_ip_identity_beats_spoofed_forwarded_for():
+    event = {**EVENT_0_1, "headers": {"X-Forwarded-For": "6.6.6.6, 147.234.69.205"}}
+    assert get_client_ip(event) == "147.234.69.205"
+
+
+def test_get_client_ip_forwarded_for_case_insensitive():
+    assert get_client_ip({"headers": {"X-Forwarded-For": "9.9.9.9, 8.8.8.8"}}) == "9.9.9.9"
+
+
+def test_get_user_agent_prefers_identity():
+    assert get_user_agent(EVENT_0_1) == "Mozilla/5.0 Firefox/154.0"
+
+
+def test_get_user_agent_falls_back_to_header_any_case():
+    assert get_user_agent({"headers": {"User-Agent": "UA-1"}}) == "UA-1"
+    assert get_user_agent({"headers": {"user-agent": "UA-2"}}) == "UA-2"
+
+
+def test_get_user_agent_unknown():
+    assert get_user_agent({}) == "unknown"
+    assert get_user_agent({"headers": None, "requestContext": {}}) == "unknown"
+
+
+def test_find_header_missing_or_empty():
+    assert find_header({"headers": {"X-A": ""}}, "x-a") == ""
+    assert find_header({}, "x-a") == ""
 
 
 def test_handle_errors_passthrough():
